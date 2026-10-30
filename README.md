@@ -10,11 +10,17 @@ cd AI-Docker-Project      #open that folder
 #### to make the in folder#####
 
 New-Item app.py -ItemType File
+
+
 New-Item requirements.txt -ItemType File
+
+
 New-Item Dockerfile -ItemType File
 
 
-notepad app.py         #TO open the app.py in notepad
+
+#TO open the app.py in notepad
+notepad app.py         
 
 ##########################################################################################
 from flask import Flask, request, jsonify

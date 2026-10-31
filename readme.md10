@@ -1,0 +1,474 @@
+AI-Docker-Project/
+│
+├── app.py
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+│
+├── frontend/
+│   ├── index.html
+│   ├── Dockerfile
+│   └── nginx.conf
+│
+└── database/
+    └── init.sql
+    
+
+--------------------------------------
+cd C:\Users\student\AI-Docker-Project      ////mkdir
+---------------------------------------
+
+
+
+
+cd C:\Users\student
+mkdir AI-Docker-Project
+cd AI-Docker-Project
+mkdir frontend
+mkdir database
+
+
+----------------------------------------------------
+
+New-Item app.py -ItemType File
+New-Item requirements.txt -ItemType File
+New-Item Dockerfile -ItemType File
+New-Item docker-compose.yml -ItemType File
+
+New-Item frontend/index.html -ItemType File
+New-Item frontend/Dockerfile -ItemType File
+New-Item frontend/nginx.conf -ItemType File
+
+New-Item database/init.sql -ItemType File
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+    2. Backend – app.py
+Purpose: Accepts user input, predicts High or Low, and stores the result in MySQL.
+
+File:  notepadapp.py
+
+##########################################
+
+from flask import Flask, request, jsonify
+import mysql.connector
+import time
+
+app = Flask(__name__)
+
+db_config = {
+    "host": "db",
+    "user": "aiuser",
+    "password": "aipassword",
+    "database": "aidb"
+}
+
+def initialize_database():
+    for attempt in range(15):
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS predictions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    input_value FLOAT,
+                    prediction VARCHAR(20)
+                )
+            """)
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            print("Database connected successfully!")
+            return
+
+        except mysql.connector.Error as e:
+            print("Waiting for database:", e)
+            time.sleep(3)
+
+    raise Exception("Database connection failed")
+
+@app.route("/")
+def home():
+    return """
+    <h1>AI Model Deployment Using Docker Compose</h1>
+    <p>Application is running successfully!</p>
+    """
+
+@app.route("/predict", methods=["GET", "POST"])
+def predict():
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        value = data.get("value")
+    else:
+        value = request.args.get("value", default=0)
+
+    try:
+        value = float(value)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Enter a valid number"}), 400
+
+    if value >= 50:
+        result = "High"
+    else:
+        result = "Low"
+
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "INSERT INTO predictions (input_value, prediction) VALUES (%s, %s)",
+            (value, result)
+        )
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    except mysql.connector.Error as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({
+        "input": value,
+        "prediction": result,
+        "message": "Prediction saved successfully"
+    })
+
+if __name__ == "__main__":
+    initialize_database()
+    app.run(host="0.0.0.0", port=5000)
+    
+#########################################################
+
+
+
+3. Python dependencies
+File: requirements.txt
+
+########################
+Flask
+mysql-connector-python
+###########################
+
+
+
+4. Backend Dockerfile
+File: Dockerfile
+##############################################
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app.py .
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]
+###############################################
+
+
+5. Frontend HTML
+File: frontend/index.html
+
+#########################################################
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Prediction System</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            text-align: center;
+            background: #eef2f7;
+            padding: 50px;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            width: 350px;
+            margin: auto;
+            border-radius: 10px;
+            box-shadow: 0 0 10px #ccc;
+        }
+
+        input, button {
+            padding: 10px;
+            margin: 10px;
+        }
+
+        button {
+            background: blue;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        #result {
+            color: green;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h2>AI Prediction System</h2>
+
+    <input
+        type="number"
+        id="value"
+        placeholder="Enter a number"
+    >
+
+    <br>
+
+    <button onclick="predict()">Predict</button>
+
+    <h3 id="result"></h3>
+
+</div>
+
+<script>
+
+async function predict() {
+
+    const value = document.getElementById("value").value;
+
+    if (value === "") {
+        alert("Please enter a number");
+        return;
+    }
+
+    try {
+        const response = await fetch("/api/predict", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                value: Number(value)
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Prediction failed");
+        }
+
+        document.getElementById("result").innerHTML =
+            "Prediction: " + data.prediction +
+            "<br>Input: " + data.input +
+            "<br>" + data.message;
+
+    } catch (error) {
+        document.getElementById("result").innerText =
+            error.message;
+    }
+}
+
+</script>
+
+</body>
+</html>
+
+#################################################################
+
+
+
+6. Frontend Dockerfile
+File: frontend/Dockerfile
+
+##########################################################
+
+FROM nginx:alpine
+
+COPY index.html /usr/share/nginx/html/index.html
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+##########################################################
+
+
+7. Nginx configuration
+File: frontend/nginx.conf
+
+###################################################################
+server {
+
+    listen 80;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://backend:5000/;
+    }
+
+}
+
+
+##########################################################
+
+8. Database initialization
+File: database/init.sql
+
+####################################################################
+
+CREATE DATABASE IF NOT EXISTS aidb;
+
+USE aidb;
+
+CREATE TABLE IF NOT EXISTS predictions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    input_value FLOAT,
+    prediction VARCHAR(20)
+);
+
+
+#################################################################
+
+
+9. Docker Compose configuration
+File: docker-compose.yml
+
+This file manages all three containers.
+
+#################################################################
+
+
+services:
+
+  backend:
+    build: .
+    container_name: ai-backend
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: ai-database
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: aidb
+      MYSQL_USER: aiuser
+      MYSQL_PASSWORD: aipassword
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot123"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: ai-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+###############################################################################
+
+
+
+#Build and start all containers:
+docker compose up --build -d
+
+
+
+#Check containers:
+docker compose ps
+
+
+#View backend logs:
+docker compose logs backend
+
+
+#View database logs:
+docker compose logs db
+
+
+#View frontend logs:
+docker compose logs frontend
+
+
+
+######################################
+11. Test the application
+Open:
+AI Prediction System
+localhost:8080
+Open frontend
+Try these values:
+Input	Output
+25	Low
+45	Low
+75	High
+100	High
+##############################
+
+
+#Test database
+docker exec -it ai-database mysql -uaiuser -paipassword aidb
+
+
+
+#Execute:
+
+SHOW TABLES;
+
+SELECT * FROM predictions;
+
+SELECT COUNT(*) FROM predictions;
+
+
+
+
+
+##Exit:
+exit;
+
+
+
+
+
+#################
+docker compose stop
+#########################
+
+
+
+
+
